@@ -5,8 +5,98 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Turbo Seeking</title>
+    <link rel="stylesheet" href="./popup/popup.css">
+    <link rel="stylesheet" href="./popup/carousel.css">
+
 </head>
 <body>
-    
+
+    <div id="not-auth">
+        <h2>Your identity on seeking.com have not been yet set.</h2>
+        <h5>Please go to <a href="https://www.seeking.com/login">seeking.com</a> to login</h5>
+    </div>
+    <div id="authenticated">
+        <div id="search-section">
+            <h4 >Enter URL</h4>
+            <input type="text" id="search-url" placeholder="Enter search url">
+            <button id="start-search">Search</button>
+        </div>
+        <div id="result-search-section">
+            <div class="profiles" data-uid="">                
+                <div class="carousel">
+                    <ul class="slides">
+                        <input type="radio" name="radio-buttons" id="img-1" checked />
+                        <li class="slide-container">
+                            <div class="slide-image">
+                                <img src="https://images.seeking.com/prod/photos/thumbs/d043d5f6-f4d8-40f9-8e1f-961e96021c65.jpg">
+                            </div>
+                            <div class="carousel-controls">
+                                <label for="img-2" class="next-slide">
+                                <span>&rsaquo;</span>
+                                </label>
+                            </div>
+                        </li>
+                        <input type="radio" name="radio-buttons" id="img-2" />
+                        <li class="slide-container">
+                            <div class="slide-image">
+                                <img src="https://images.seeking.com/prod/photos/thumbs/938fc549-62cb-4436-8369-0c7bc6b16099.jpg">
+                            </div>
+                            <div class="carousel-controls">
+                                <label for="img-3" class="next-slide">
+                                <span>&rsaquo;</span>
+                                </label>
+                            </div>
+                        </li>
+                        <input type="radio" name="radio-buttons" id="img-3" />
+                        <li class="slide-container">
+                            <div class="slide-image">
+                                <img src="https://images.seeking.com/prod/photos/thumbs/5884d597-ffa6-413d-9803-64ab299c0af0.jpg">
+                            </div>
+                            <div class="carousel-controls">
+                                <label for="img-1" class="next-slide">
+                                <span>&rsaquo;</span>
+                                </label>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+                <div class="button-functions">
+                        <input id="toggle-heart" type="checkbox"/>
+                        <label for="toggle-heart">❤</label>
+                </div>
+                
+            </div>
+            <div class="profiles">
+
+            </div>
+            <div class="profiles">
+
+            </div>
+            <div class="profiles">
+
+            </div>
+            <div class="profiles">
+
+            </div>
+            <div class="profiles">
+                
+            </div>
+            <div class="profiles">
+                
+            </div>
+            <div class="profiles">
+                
+            </div>
+            <div class="profiles">
+                
+            </div>
+            <div class="profiles">
+                
+            </div>
+
+        </div>
+    </div>
+
+    <script src="./popup/popup.js"></script>
 </body>
 </html>
