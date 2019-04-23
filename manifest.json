@@ -24,7 +24,7 @@
     },    
     "manifest_version": 2,
     "name": "Turbo Seeking",
-    "permissions": [ "tabs", "storage", "webRequest",  "*://*.seeking.com/*" ],
+    "permissions": [ "tabs", "storage", "webRequest",  "*://*.seeking.com/*", "*://localhost/*" ],
     "short_name": "Turbo Seeking",   
     "version": "1.0.1",
     "web_accessible_resources": [ "128.png" ]
