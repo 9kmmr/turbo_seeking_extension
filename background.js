@@ -11,8 +11,9 @@ chrome.storage.sync.get(['uid','email','access_token'], function(items){
         console.log(uid, email, access_token)
     }
     chrome.storage.sync.get('cannedmessage', function(item){
-        if (!item) {
-            chrome.storage.sync.set({'cannedmessage':'{"message1":"Hey","message2":"Hey","message3":"Hey","message41":"Hey","message5":"Hey"}'});
+        
+        if (!item.cannedmessage) {
+            chrome.storage.sync.set({'cannedmessage':'{"message1":"Hey","message2":"Hey","message3":"Hey","message4":"Hey","message5":"Hey"}'});
         }
     })
     chrome.storage.sync.get('delaymode', function(item){
@@ -44,6 +45,14 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         })
         return true;
     }
+    if (request.savesetting) {
+        console.log(request.savesetting)
+        chrome.storage.sync.set({'delaymode':request.savesetting}, function(){
+            sendResponse(true);
+        });
+
+        return true;
+    }
 
     if (request.state) {
         user = JSON.parse(request.detail);
@@ -70,15 +79,16 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
        
     }
     if (request.savecannedmessages) {
-        if (request.cannedmessage) {
+        if (request.savecannedmessages) {
             // save to storage
-            chrome.storage.sync.set({'cannedmessage':request.cannedmessage});
+            chrome.storage.sync.set({'cannedmessage':request.savecannedmessages});
             // save to server
         }
         return true;
     }
     if (request.getcannedmessages) {
         chrome.storage.sync.get('cannedmessage',function(item) {
+            console.log(item.cannedmessage)
             sendResponse(item.cannedmessage)
         });
         return true;
@@ -88,7 +98,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         
         _theUrl = "https://api.seeking.com/v3/users/"+uid+"/search?"+request.startsearch.split("search?")[1]
         console.log(_theUrl)
-        if (old_url!=_theUrl) {
+        //if (old_url!=_theUrl) {
             requestGetLive(_theUrl, 5).then(function(response) {
                 console.log(response)
                 if (response) {
@@ -103,14 +113,61 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                 } else 
                     sendResponse(null)
             });
-            old_url=_theUrl;
-        }
+            //old_url=_theUrl;
+        //}
         return true;
     }
+
+    if (request.favorite) {
+
+        _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+request.favorite;
+        console.log(_theUrl)
+        requestFavorite(_theUrl, 5).then(response => {
+            console.log("favorite message:",response)
+            if (response.status=="OK") {
+                sendResponse(true);
+            } else 
+                sendResponse(null);
+        })
+        return true;
+    }
+    if (request.unfavorite) {
+        _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+request.unfavorite;
+        console.log(_theUrl)
+        requestUnFavorite(_theUrl, 5).then(response => {
+            console.log("unfavorite message:",response)
+            if (response.status=="OK") {
+                sendResponse(true);
+            } else 
+                sendResponse(null);
+        })
+        return true;
+    }
+
+    if (request.sendmessage) {
+        if (request.message) {
+            _theUrl = "https://api.seeking.com/v3/users/"+uid+"/conversations";
+            data = {"body":request.message, "member_uid":request.sendmessage};
+            requestSendMessage(_theUrl, data, 5).then(response => {
+                if (response.status=="OK") {
+                    sendResponse(true);
+                } else 
+                    sendResponse(null);
+            })
+        } else {
+            sendResponse('no message')
+        }
+    }
+    
+
     return true;
 
 });
-
+/**
+ * 
+ * @param {*} url 
+ * @param {*} n 
+ */
 const requestGetLive = (url,  n) => {
     options={
         method:"GET",
@@ -146,7 +203,11 @@ const requestGetLive = (url,  n) => {
     });
     return fetchedData;
 }
-
+/**
+ * 
+ * @param {*} data 
+ * @param {*} callback 
+ */
 function combineProfileData(data, callback) {    
     users = [];
     
@@ -168,6 +229,10 @@ function combineProfileData(data, callback) {
     }
     callback(users);
 }
+/**
+ * 
+ * @param {*} datauser 
+ */
 async function combineUserPhotos(datauser) {
     newusers = [];
     if (datauser) {
@@ -190,7 +255,11 @@ async function combineUserPhotos(datauser) {
     return await Promise.all(newusers);
     
 }
-
+/**
+ * 
+ * @param {*} url 
+ * @param {*} n 
+ */
 async function requestGetProfile(url, n) {
     options={
         method:"GET",
@@ -229,63 +298,135 @@ async function requestGetProfile(url, n) {
 }
 
 
-
-function requestFavorite(f_uid, callback) {
-    
-    _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+f_uid
-    try {        
-        var xmlHttp = new XMLHttpRequest();
-        xmlHttp.onreadystatechange = function() { 
-            if (xmlHttp.readyState == 4 && xmlHttp.status == 200)
-                callback(xmlHttp.responseText);
-            else if (xmlHttp.readyState == 4 && xmlHttp.status == 430) {
+/**
+ * 
+ * @param {*} url 
+ * @param {*} n 
+ */
+const requestFavorite = (url,  n) => {
+    options={
+        method:"POST",
+        headers: {
+            "Authorization": "Bearer "+access_token,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+        },
+        body: JSON.stringify({})
+    }
+    fetchedData = fetch(url, options).then(
+       function(response) {
+            status = response.status;
+            if (status==200)
+                return response.json();
+            if (status==403) {
+                if (n === 1) {
+                    return null
+                };
                 requestGetAccessToken(function(){})
-                console.log('403')
-                callback('fail')
+                return requestFavorite(url,  n - 1);
+            } else {
+                if (n === 1) {
+                    return null
+                };
+                requestGetAccessToken(function(){})
+                return requestFavorite(url,  n - 1);
             }
-            else 
-                callback(null);
-    
+            
         }
-        xmlHttp.open("POST", _theUrl, true); // true for asynchronous 
-        xmlHttp.setRequestHeader("Authorization", "Bearer "+access_token); 
-        xmlHttp.setRequestHeader("Accept", "application/json");    
-        xmlHttp.setRequestHeader("Content-Type", "application/json");    
-        xmlHttp.setRequestHeader("Access-Control-Allow-Origin", "*");      
-        let data = JSON.stringify({});
-        xmlHttp.send(data);
-    } catch (error) {
-        console.log('error can not favorite');
-    }
+    ).catch(function(error) {
+        if (n === 1) {   
+            console.log('error can not favorite');        
+            return null;
+        };
+        return requestFavorite(url, n - 1);
+    });
+    return fetchedData;
 }
-function requestSendMessage(s_uid, message, callback) {
-    
-    _theUrl = "https://api.seeking.com/v3/users/"+uid+"/conversations"
-    try {        
-        var xmlHttp = new XMLHttpRequest();
-        xmlHttp.onreadystatechange = function() { 
-            if (xmlHttp.readyState == 4 && xmlHttp.status == 200)
-                callback(xmlHttp.responseText);
-            else if (xmlHttp.readyState == 4 && xmlHttp.status == 430) {
-                console.log('403')
-                
-                callback('fail')
+/**
+ * 
+ * @param {*} url 
+ * @param {*} n 
+ */
+const requestUnFavorite = (url,  n) => {
+    options={
+        method:"DELETE",
+        headers: {
+            "Authorization": "Bearer "+access_token            
+        }
+    }
+    fetchedData = fetch(url, options).then(
+       function(response) {
+            status = response.status;
+            if (status==200)
+                return response.json();
+            if (status==403) {
+                if (n === 1) {
+                    return null
+                };
+                requestGetAccessToken(function(){})
+                return requestUnFavorite(url,  n - 1);
+            } else {
+                if (n === 1) {
+                    return null
+                };
+                requestGetAccessToken(function(){})
+                return requestUnFavorite(url,  n - 1);
             }
-            else 
-                callback(null);    
+            
         }
-        xmlHttp.open("POST", _theUrl, true); // true for asynchronous 
-        xmlHttp.setRequestHeader("Authorization", "Bearer "+access_token);    
-        xmlHttp.setRequestHeader("Accept", "application/json");    
-        xmlHttp.setRequestHeader("Content-Type", "application/json");    
-        xmlHttp.setRequestHeader("Access-Control-Allow-Origin", "*");   
-          
-        let data = JSON.stringify({"body":message, "member_uid":s_uid});
-        xmlHttp.send(data);
-    } catch (error) {
-        console.log('error can not favorite');
-    }
+    ).catch(function(error) {
+        if (n === 1) {   
+            console.log('error can not favorite');        
+            return null;
+        };
+        return requestUnFavorite(url, n - 1);
+    });
+    return fetchedData;
 }
+
+
+const requestSendMessage = (url, data,  n) => {
+    options={
+        method:"POST",
+        headers: {
+            "Authorization": "Bearer "+access_token,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+        },
+        body: JSON.stringify(data)
+    }
+    fetchedData = fetch(url, options).then(
+       function(response) {
+            status = response.status;
+            if (status==200)
+                return response.json();
+            if (status==403) {
+                if (n === 1) {
+                    return null
+                };
+                requestGetAccessToken(function(){})
+                return requestSendMessage(url, data,  n - 1);
+            } else {
+                if (n === 1) {
+                    return null
+                };
+                requestGetAccessToken(function(){})
+                return requestSendMessage(url, data,  n - 1);
+            }
+            
+        }
+    ).catch(function(error) {
+        if (n === 1) {   
+            console.log('error can not send message');        
+            return null;
+        };
+        return requestSendMessage(url, data, n - 1);
+    });
+    return fetchedData;
+}
+
 
 function requestGetAccessToken(callback){
     _theUrl = "https://api.seeking.com/v3/users/"+uid+"/auth/token"
