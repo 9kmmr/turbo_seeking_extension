@@ -7,9 +7,14 @@ chrome.extension.sendMessage({ getidentity: 1 }, function (res) {
     
     if (res) {
         chrome.extension.sendMessage({ getsettings: 1 }, function (response) {
-            console.log(response)
-            if (response=="on") {
-                document.getElementById('delaymode').setAttribute('checked',true);
+            
+            if (response) {
+                if (response.delaymode=="on") {
+                    document.getElementById('delaymode').setAttribute('checked',true);
+                }
+                if (response.favoritemode=="on") {
+                    document.getElementById('favoritemode').setAttribute('checked',true);
+                }
             }
         })
         chrome.extension.sendMessage({ getcannedmessages: 1 }, function (response) {
@@ -53,14 +58,14 @@ searchbtn.onclick = function(e){
 }
 
 function dosearch(url) {
-    $('#result-search-section').append("<p id='ajax-loader' style='color:red;' >Loading...</p>")
+    $('#result-search-section').append("<img id='ajax-loader' src='./popup/flick-loader.gif' width='40px' height='40px' >")
     chrome.extension.sendMessage({ startsearch: url }, function (response) {
         
         if (response) {
             currentpage = response.currentpage;
             next_page = response.next_page;
             page_index = currentpage;
-            console.log(response)
+            
             showProfiles(response.profiles, function(){
                 $('#ajax-loader').remove();
                 
@@ -139,24 +144,24 @@ result_search_section.addEventListener('scroll', function(event) {
 
 
 /******************************************** FAVORITE ************************************/
-
-$('.toggle-heart').click(function(){
-    console.log($(this).data("for"))
-    checkheart = $("#"+$(this).data("for"));
+$(document).on('click','.toggle-heart',function(){
+    
+    checkheart = $("#"+$(this).attr("for"));
     const datauid = $(checkheart).data('uid');
-    console.log(datauid)
-    if( $(checkheart).is(':checked') ) {
-        console.log('checked')
-        favorite(datauid, res => {
-            if (!res) {
-                $(checkheart).prop("checked",false);
-            }
-        })
-    } else {
-        console.log('unchecked')
+    if ($(checkheart).prop('checked')) {
+        $(this).prop('checked',false)
+        console.log('unfavorite')
         unfavorite(datauid, res => {
             if (!res) {
                 $(checkheart).prop("checked",true);
+            }
+        })        
+    } else {
+        $(this).prop('checked',true)
+        console.log('favorite')
+        favorite(datauid, res => {
+            if (!res) {
+                $(checkheart).prop("checked",false);
             }
         })
     }
@@ -184,13 +189,18 @@ function unfavorite(uid, callback) {
 
 /****************************************** SEND MESSAGE****************************** */
 
-$('.canned-btn-send-mes').click(function(e){
-    e.preventDefault();
+$(document).on('click','.canned-btn-send-mes',function(e){
+    const self = $(this);
     const uid = $(this).parent().data('uid');
     mess = $(this).prop('title');
+    
     sendMessage(uid, mess, res => {
         if (!res) {
+            $(self).css("background-color","#666");
             console.log('failed to send message');
+        } else {
+            $(self).css("background-color","#ff0000d9");
+            
         }
     })
 })
@@ -207,10 +217,10 @@ function sendMessage(uid, messages, callback) {
 
 
 /******************************************* SETTINGS ****************************** */
-
+// delay mode
 $('#delaymode').change(function(){
     value=($(this).is(':checked')?"on":"off");
-    console.log(value);
+    
     setDelaymode(value, res => {
         if (!res) {
 
@@ -219,7 +229,7 @@ $('#delaymode').change(function(){
 })
 
 function setDelaymode(value, callback) {
-    chrome.extension.sendMessage({ savesetting: value }, function (response) {        
+    chrome.extension.sendMessage({ savedelaymode: value }, function (response) {        
         if (response) {
             callback(true);
         } else {
@@ -227,7 +237,25 @@ function setDelaymode(value, callback) {
         }
     })
 }
+// favorite mode
+$('#favoritemode').change(function(){
+    value=($(this).is(':checked')?"on":"off");
+    
+    setFavoritemode(value, res => {
+        if (!res) {
 
+        }
+    })
+})
+function setFavoritemode(value, callback) {
+    chrome.extension.sendMessage({ savefavoritemode: value }, function (response) {        
+        if (response) {
+            callback(true);
+        } else {
+            callback(false);
+        }
+    })
+}
 
 
 /****************************************CANNED MESSSAGE **************************** */
@@ -240,7 +268,11 @@ $('#save-setting').click(function(){
     message_save5 = $('#messagenumber5').val() || 'Hey';
     saveCannedMessage(JSON.stringify({"message1":message_save1,"message2":message_save2,"message3":message_save3,"message4":message_save4,"message5":message_save5 }), res => {
         if (!res) {
-
+            cannedmessage1 = message_save1;
+            cannedmessage2 = message_save2;
+            cannedmessage3 = message_save3;
+            cannedmessage4 = message_save4;
+            cannedmessage5 = message_save5;
         }
     })
 

@@ -1,30 +1,44 @@
 
-siteurl = "http://localhost/turbo_seeking/";
+siteurl = "http://localhost/";
 
 var uid, email, access_token, old_url;
-maxTries = 3;
+var maxTries = 3, delaymode="off", favoritemode = "off";
+cannedmessages=[];
 chrome.storage.sync.get(['uid','email','access_token'], function(items){
     if (items) {
         uid = items.uid;
         email = items.email;
         access_token = items.access_token;
-        console.log(uid, email, access_token)
+        
+        authServerSide(function(){})
     }
     chrome.storage.sync.get('cannedmessage', function(item){
-        
+        if (item.cannedmessage) {
+            ms = JSON.parse(item.cannedmessage);
+            cannedmessages = [ms.message1,ms.message2,ms.message3,ms.message4,ms.message5];
+        }
         if (!item.cannedmessage) {
             chrome.storage.sync.set({'cannedmessage':'{"message1":"Hey","message2":"Hey","message3":"Hey","message4":"Hey","message5":"Hey"}'});
         }
     })
     chrome.storage.sync.get('delaymode', function(item){
-        if (!item) {
-            chrome.storage.sync.set({'delaymode':0});
+        if (!item.delaymode) {
+            chrome.storage.sync.set({'delaymode':"off"});
+        } else if (item.delaymode) {
+            delaymode = item.delaymode;
+        }
+    })
+    chrome.storage.sync.get('favoritemode', function(item){
+        if (!item.favoritemode) {
+            chrome.storage.sync.set({'favoritemode':"off"});
+        } else if (item.favoritemode) {
+            favoritemode = item.favoritemode;
         }
     })
 
 })
 
-
+/**  ****************************** LISTENER SECTION ************************************** */
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     if (request.getidentity) {
         chrome.storage.sync.get(['uid','email','access_token'], function(items){
@@ -40,14 +54,39 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         return true;
     }
     if (request.getsettings) {
-        chrome.storage.sync.get('delaymode', function(res) {
-            sendResponse(res.delaymode);
+        chrome.storage.sync.get(['delaymode', 'favoritemode'], function(res) {
+            sendResponse(res);
         })
         return true;
     }
-    if (request.savesetting) {
-        console.log(request.savesetting)
-        chrome.storage.sync.set({'delaymode':request.savesetting}, function(){
+    if (request.savedelaymode) {
+        
+        chrome.storage.sync.set({'delaymode':request.savedelaymode}, function(){
+            delaymode = request.savedelaymode;
+            authServerSide(res => {
+                if (res) {
+                    saveServerSettingdelay(request.savedelaymode)
+                } else {
+                    console.log('cannot auth to the server');
+                }
+            })
+            
+            sendResponse(true);
+        });
+
+        return true;
+    }
+    if (request.savefavoritemode) {
+        
+        chrome.storage.sync.set({'favoritemode':request.savefavoritemode}, function(){
+            favoritemode = request.savefavoritemode;
+            authServerSide(res => {
+                if (res) {
+                    saveServerSettingfavorite(request.savefavoritemode)
+                } else {
+                    console.log('cannot auth to the server');
+                }
+            })
             sendResponse(true);
         });
 
@@ -82,13 +121,21 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         if (request.savecannedmessages) {
             // save to storage
             chrome.storage.sync.set({'cannedmessage':request.savecannedmessages});
+            let cannedms = JSON.parse(request.savecannedmessages);
+            cannedmessages = [cannedms.message1,cannedms.message2,cannedms.message3,cannedms.message4,cannedms.message5]
             // save to server
+            authServerSide(res => {
+                if (res) {
+                    saveServerCannedMessage(request.savecannedmessages);
+                } else {
+                    console.log('cannot auth to the server');
+                }
+            })
         }
         return true;
     }
     if (request.getcannedmessages) {
         chrome.storage.sync.get('cannedmessage',function(item) {
-            console.log(item.cannedmessage)
             sendResponse(item.cannedmessage)
         });
         return true;
@@ -97,10 +144,10 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     if (request.startsearch) {
         
         _theUrl = "https://api.seeking.com/v3/users/"+uid+"/search?"+request.startsearch.split("search?")[1]
-        console.log(_theUrl)
+        
         //if (old_url!=_theUrl) {
             requestGetLive(_theUrl, 5).then(function(response) {
-                console.log(response)
+                
                 if (response) {
                     combineProfileData(response.response.profiles.data, function(returned_users) {
                         combineUserPhotos(returned_users).then(users_data =>{
@@ -119,43 +166,112 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     }
 
     if (request.favorite) {
-
-        _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+request.favorite;
-        console.log(_theUrl)
-        requestFavorite(_theUrl, 5).then(response => {
-            console.log("favorite message:",response)
-            if (response.status=="OK") {
-                sendResponse(true);
-            } else 
-                sendResponse(null);
-        })
+        if (favoritemode=="off") {
+            _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+request.favorite;
+            
+            requestFavorite(_theUrl, 5).then(response => {
+                if (response) {
+    
+                    console.log("favorite message:",response)
+                    if (response.status=="OK") {
+                        sendResponse(true);
+                    } else 
+                        sendResponse(null);
+                } else 
+                    sendResponse(null);
+            })
+            // add favorite to the server
+           /*  authServerSide(res => {
+                if (res) {
+                    saveFavorites(request.favorite);
+                } else {
+                    console.log('cannot auth to the server');
+                }
+            }) */
+        } else if (favoritemode=="on") {
+            _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+request.favorite;
+            
+            requestFavorite(_theUrl, 5).then(response => {
+                if (response) {    
+                    console.log("favorite message:",response)
+                    if (response.status=="OK") {
+                        sendResponse(true);
+                        /* let cannedmessagechosed = cannedmessages[Math.floor(Math.random()*cannedmessages.length)];
+                        _theUrl2 = "https://api.seeking.com/v3/users/"+uid+"/conversations";
+                        data = {"body":cannedmessagechosed, "member_uid":request.favorite};                        
+                        requestSendMessage(_theUrl2, data, 5).then(response => {
+                            if (response) {
+                                if (response.status=="OK") {
+                                    console.log("sent canned message:",response)
+                                    sendResponse(true);
+                                } else 
+                                    sendResponse(null);
+                            } else  
+                                sendResponse(null);
+                        }) */
+                        
+                    } else 
+                        sendResponse(null);
+                } else 
+                    sendResponse(null);
+            })
+        }
         return true;
     }
     if (request.unfavorite) {
         _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+request.unfavorite;
-        console.log(_theUrl)
+        
         requestUnFavorite(_theUrl, 5).then(response => {
-            console.log("unfavorite message:",response)
-            if (response.status=="OK") {
-                sendResponse(true);
-            } else 
-                sendResponse(null);
+            if (response) {
+                console.log("unfavorite message:",response)
+                if (response.status=="OK") {
+                    sendResponse(true);
+                } else 
+                    sendResponse(null);
+            } else sendResponse(null);
         })
+        // remove favorite in the server
+        authServerSide(res => {
+            if (res) {
+                saveUnFavorites(request.unfavorite)
+            } else {
+                console.log('cannot auth to the server');
+            }
+        })
+
         return true;
     }
 
     if (request.sendmessage) {
         if (request.message) {
-            _theUrl = "https://api.seeking.com/v3/users/"+uid+"/conversations";
-            data = {"body":request.message, "member_uid":request.sendmessage};
-            requestSendMessage(_theUrl, data, 5).then(response => {
-                if (response.status=="OK") {
-                    sendResponse(true);
-                } else 
-                    sendResponse(null);
-            })
-        } else {
+            if (delaymode=="off") {
+                _theUrl = "https://api.seeking.com/v3/users/"+uid+"/conversations";
+                data = {"body":request.message, "member_uid":request.sendmessage};
+                
+                requestSendMessage(_theUrl, data, 5).then(response => {
+                    console.log(response)
+                    if (response) {
+                        if (response.status=="OK") {
+                            sendResponse(true);
+                        } else 
+                            sendResponse(null);
+                    } else  
+                        sendResponse(null);
+                })
+            } else if (delaymode=="on") {
+                authServerSide(res => {
+                    if (res) {
+                        saveSendMessage(request.sendmessage, request.message)
+                    } else {
+                        console.log('cannot auth to the server');
+                    }
+                })
+                sendResponse('delaymode on')
+            }
+
+        } else {            
             sendResponse('no message')
+            //
         }
     }
     
@@ -463,6 +579,91 @@ function requestGetAccessToken(callback){
     }
 }
 
+
+/*********************************** CONTACT TO THE SERVER SIDE ******************************* */
+/**
+ * 
+ * @param {*} callback 
+ */
+function authServerSide( callback) {
+    const _theUrl = siteurl + "auth?getauth=1&uid="+uid+"&email="+email+"&access_token="+access_token;    
+    
+    httpGetAsync(_theUrl, res => {
+        console.log(res)
+        if (res) {
+            callback(true)
+        } else {
+            callback(false)
+        }
+    })
+}
+/**
+ * 
+ * @param {*} messages 
+ */
+function saveServerCannedMessage(messages) {
+    const _theUrl = siteurl + "savecannedmessage";  
+    const _data = JSON.stringify({"uid":uid, "email":email,"cannedmessages":messages})
+    httpPostAsync(_theUrl, _data, res => {
+        console.log(res)
+    })
+}
+/**
+ * 
+ * @param {*} mode 
+ */
+function saveServerSettingdelay(mode) {
+    const _theUrl = siteurl + "settingdelay";  
+    const _data = JSON.stringify({"uid":uid, "email":email,"delay":mode})
+    httpPostAsync(_theUrl, _data, res => {
+        console.log(res)
+    })
+}
+/**
+ * 
+ * @param {*} mode 
+ */
+function saveServerSettingfavorite(mode) {
+    const _theUrl = siteurl + "settingfavorite";  
+    const _data = JSON.stringify({"uid":uid, "email":email,"favorite":mode})
+    httpPostAsync(_theUrl, _data, res => {
+        console.log(res)
+    })
+}
+/* this function cause conflict with watch favorite on server side, douplicate possible
+
+function saveFavorites(f_uid) {
+    const _theUrl = siteurl + "auth";  
+    const _data = JSON.stringify({"uid":uid, "email":email,"f_uid":f_uid,"favorite_user":1})
+    httpPostAsync(_theUrl, _data, res => {
+
+    })
+} */
+/**
+ * 
+ * @param {*} f_uid 
+ */
+function saveUnFavorites(f_uid) {
+    const _theUrl = siteurl + "unfavoriteuser";  
+    const _data = JSON.stringify({"uid":uid, "email":email,"f_uid":f_uid,"unfavorite_user":1})
+    httpPostAsync(_theUrl, _data, res => {
+        console.log(res)
+    })
+}
+/**
+ * 
+ * @param {*} s_uid 
+ * @param {*} message 
+ */
+function saveSendMessage(s_uid, message) {
+    const _theUrl = siteurl + "delaycannedmessage";  
+    _data = JSON.stringify({"uid":uid, "email":email,"s_uid":s_uid,"message":message})
+    httpPostAsync(_theUrl, _data, res => {
+        console.log(res)
+    })
+}
+
+
 function httpGetAsync(_theUrl, callback)
 {
     var xmlHttp = new XMLHttpRequest();
@@ -476,13 +677,15 @@ function httpGetAsync(_theUrl, callback)
 
 function httpPostAsync(_theUrl, _data, callback)
 {
+    
     var xmlHttp = new XMLHttpRequest();
     xmlHttp.onreadystatechange = function() { 
         if (xmlHttp.readyState == 4 && xmlHttp.status == 200)
             callback(xmlHttp.responseText);
     }
-    xmlHttp.open("POST", _theUrl, true); // true for asynchronous 
-    xmlHttp.setRequestHeader("Content-Type", "application/json");
-    let data = JSON.stringify(_data)
-    xhr.send(data);
+    xmlHttp.open("POST", _theUrl); 
+    xmlHttp.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+    xmlHttp.send(_data);
+
+
 }
