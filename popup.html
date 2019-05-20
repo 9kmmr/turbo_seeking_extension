@@ -10,6 +10,9 @@
     <link rel="stylesheet" href="./popup/bootstrap.min.css">
     <script src="./popup/jquery.min.js"></script>
     <script src="./popup/bootstrap.min.js"></script>
+
+    <link rel="stylesheet" href="./popup/bootstrap-select.css">
+    <script src="./popup/bootstrap-select.min.js"></script>
 </head>
 <body>
 
@@ -20,9 +23,90 @@
     </div>
     <div id="authenticated">
         <div id="search-section">
-            <h4 >Enter URL   <button id="config" data-toggle="modal" data-target="#myModal" style=" background: url('./popup/config.png');background-size: contain"></button></h4>
-            <input type="text" id="search-url" placeholder="Enter search url">
-            <button id="start-search">Search</button>
+            <h4 >
+                <input type="text" id="search-url" placeholder="Enter search url" data-toggle="tooltip" data-placement="top" title="Paste your URL here">
+                <button id="start-search" data-toggle="tooltip" data-placement="top" title="Click To Search">Search</button>
+                <button id="config" data-toggle="modal" data-target="#myModal" style=" background: url('./popup/config.png');background-size: contain"></button>
+                <button id="list" data-toggle="modal" data-target="#listModal" style=" background: url('./popup/list.png');background-size: contain"></button>
+            </h4>
+            
+        </div>
+        <div id="search-option-section">
+            <form id="setting-form">
+            <div class="row">
+                <div class="col-xs-4">
+                    <select name="body_type" id="bodytype" class="form-control selectpicker" data-live-search="false" multiple>
+                        <option value="" selected>Body Type</option>
+                        <option value="102">Slim</option>
+                        <option value="103">Athletic</option>
+                        <option value="104">Average</option>
+                        <option value="309">Curvy</option>
+                        <option value="105">A Few Extra Pounds</option>
+                        <option value="106">Full/Overweight</option>
+                        <option value="267">Other</option>
+                        
+                    </select> 
+                </div>
+                <div class="col-xs-4">
+                    <select name="ethnicity" id="ethnicity" class="form-control selectpicker" multiple data-live-search="false">
+                        <option value="" selected>ETHNICITY</option>
+                        <option value="107">Asian</option>
+                        <option value="108">Black / African Descent</option>
+                        <option value="109">Latin / Hispanic</option>
+                        <option value="110">East Indian</option>
+                        <option value="111">Middle Eastern</option>
+                        <option value="112">Mixed</option>
+                        <option value="113">Native American</option>
+                        <option value="114">Pacific Islander</option>
+                        <option value="115">White / Caucasian</option>
+                        <option value="116">Other</option>                                  
+
+                    </select>  
+                </div>
+                <div class="col-xs-4">
+                    <select name="hair_color" id="haircolor" class="form-control selectpicker" multiple data-live-search="false">
+                        <option value="" selected>HAIR COLOR</option>
+                        <option value="62">Auburn</option>
+                        <option value="63">Black</option>
+                        <option value="64">Blonde</option>
+                        <option value="65">Light Brown</option>
+                        <option value="66">Dark Brown</option>
+                        <option value="67">Grey</option>
+                        <option value="68">Red</option>
+                        <option value="69">White</option>
+                        <option value="70">Other</option>
+
+                    </select> 
+                </div>
+            </div> 
+            <div class="row">
+                <div class="col-xs-4">
+                    <select name="smoking" id="smoking" class="form-control selectpicker" multiple data-live-search="false">
+                        <option value="" selected>SMOKING</option>
+                        <option value="27">Non Smoker</option>
+                        <option value="28">Light Smoker</option>
+                        <option value="29">Heavy Smoker</option>
+                    </select>    
+                </div>
+                <div class="col-xs-4">
+                    <select name="drinking" id="drinking" class="form-control selectpicker" multiple data-live-search="false">
+                        <option value="" selected>DRINKING</option>
+                        <option value="30">Non Drinker</option>
+                        <option value="31">Social Drinker</option>
+                        <option value="32">Heavy Drinker</option>
+                    </select>  
+                </div>
+                <div class="col-xs-4">
+                    <div class="row text-center">
+                            <span><b>Age: </b></span>
+                            <input type="number" name="min-age" style="width: 45px" id="minage" value="18" min="18" max="60">
+                            <span>-</span>
+                            <input type="number" name="max-age" style="width: 45px" id="maxage" value="27" min="18" max="60">
+                     </div>
+                </div>
+            </div>                                   
+            </form>
+            
         </div>
         <!-- Modal -->
         <div id="myModal" class="modal fade" role="dialog">
@@ -35,12 +119,7 @@
                         </div>
                         <div class="modal-body">
                             <form class="form-horizontal">
-                                <div class="form-group">
-                                    <div class="col-sm-10">
-                                        <input class="form-check-input" type="checkbox" id="delaymode" >
-                                        <label class="form-check-label" for="delaymode">Delay Mode</label>
-                                    </div>
-                                </div>
+                                
                                 <div class="form-group">
                                     <div class="col-sm-10">
                                         <input class="form-check-input" type="checkbox" id="favoritemode" >
@@ -86,8 +165,26 @@
                     </div>
             
                 </div>
+        </div>
+        <!-- modal list delayed -->
+        <div id="listModal" class="modal fade" role="dialog">
+            <div class="modal-dialog modal-lg">            
+                    <!-- Modal content-->
+                <div class="modal-content">
+                    <div class="modal-header">
+                            <button type="button" class="close" data-dismiss="modal">&times;</button>
+                            <h4 class="modal-title">Delayed Messages</h4>
+                    </div>
+                    <div class="modal-body">
+                        <form class="form-horizontal">                                
+                            <div class="form-group">
+                                    
+                            </div>
+                        </form>
+                    </div>
+                </div>
             </div>
-        
+        </div>
         <div id="result-search-section">
            
         </div>

@@ -1,9 +1,11 @@
 
-siteurl = "http://localhost/";
+siteurl = "http://botvisions.com:8080/";
 
 var uid, email, access_token, old_url;
 var maxTries = 3, delaymode="off", favoritemode = "off";
 cannedmessages=[];
+lastresultsSearched = [];
+PageIndex="";NextPage="";
 chrome.storage.sync.get(['uid','email','access_token'], function(items){
     if (items) {
         uid = items.uid;
@@ -39,7 +41,72 @@ chrome.storage.sync.get(['uid','email','access_token'], function(items){
 })
 
 /**  ****************************** LISTENER SECTION ************************************** */
+
+chrome.runtime.onConnect.addListener(function (externalPort) {
+    externalPort.onDisconnect.addListener(function() {
+        console.log(lastresultsSearched)
+        console.log(PageIndex)
+        console.log(NextPage)
+        chrome.storage.local.set({'historySearched': JSON.stringify(lastresultsSearched)}, function(){});
+        chrome.storage.sync.set({'pageindex': PageIndex}, function(){});
+        chrome.storage.sync.set({'nextpage': NextPage}, function(){});
+    })
+})
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+
+    if (request.savelastsearch) {
+        chrome.storage.sync.set({'lastsearch':request.savelastsearch}, function(){
+
+        })
+        return true;
+    }
+
+    if (request.getlastsearch) {
+        chrome.storage.sync.get('lastsearch', function(res) {
+            sendResponse(res.lastsearch);
+        })
+        return true;
+    }
+    if (request.firstsearch) {
+        lastresultsSearched=[];
+        return true;
+    }
+    if (request.getHistory) {
+        chrome.storage.local.get('historySearched', function(res) {
+            
+            if (res.historySearched) {
+                datahistory = JSON.parse(res.historySearched);
+                if (datahistory.length) {
+                    
+                    lastresultsSearched = datahistory;
+                }
+                sendResponse(datahistory);
+            }
+            else sendResponse("");
+        })
+        return true;
+    }
+    if (request.getPageIndex) {
+        chrome.storage.sync.get('pageindex', function(res) {
+            console.log(res.pageindex)
+            if (res.pageindex) {
+                PageIndex = res.pageindex;
+                sendResponse(res.pageindex);
+            }
+            else sendResponse("");
+        })
+        return true;
+    }
+    if (request.getNextPage){
+        chrome.storage.sync.get('nextpage', function(res) {
+            if (res.nextpage){
+                NextPage = res.nextpage;
+                sendResponse(res.nextpage);
+            }
+            else sendResponse("");
+        })
+        return true;
+    }
     if (request.getidentity) {
         chrome.storage.sync.get(['uid','email','access_token'], function(items){
             uid = items.uid;
@@ -59,23 +126,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         })
         return true;
     }
-    if (request.savedelaymode) {
-        
-        chrome.storage.sync.set({'delaymode':request.savedelaymode}, function(){
-            delaymode = request.savedelaymode;
-            authServerSide(res => {
-                if (res) {
-                    saveServerSettingdelay(request.savedelaymode)
-                } else {
-                    console.log('cannot auth to the server');
-                }
-            })
-            
-            sendResponse(true);
-        });
-
-        return true;
-    }
+    
     if (request.savefavoritemode) {
         
         chrome.storage.sync.set({'favoritemode':request.savefavoritemode}, function(){
@@ -152,6 +203,12 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                     combineProfileData(response.response.profiles.data, function(returned_users) {
                         combineUserPhotos(returned_users).then(users_data =>{
                             console.log(users_data)
+
+                            lastresultsSearched.push(users_data);
+                            console.log(lastresultsSearched)
+                            console.log(response.response.profiles)
+                            PageIndex = response.response.profiles.current_page;
+                            NextPage = response.response.profiles.next_page_url;
                             sendResponse({"currentpage":response.response.profiles.current_page,"next_page":response.response.profiles.next_page_url,"profiles":users_data});        
                         })
                         
@@ -180,14 +237,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                 } else 
                     sendResponse(null);
             })
-            // add favorite to the server
-           /*  authServerSide(res => {
-                if (res) {
-                    saveFavorites(request.favorite);
-                } else {
-                    console.log('cannot auth to the server');
-                }
-            }) */
+           
         } else if (favoritemode=="on") {
             _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+request.favorite;
             
@@ -196,19 +246,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                     console.log("favorite message:",response)
                     if (response.status=="OK") {
                         sendResponse(true);
-                        /* let cannedmessagechosed = cannedmessages[Math.floor(Math.random()*cannedmessages.length)];
-                        _theUrl2 = "https://api.seeking.com/v3/users/"+uid+"/conversations";
-                        data = {"body":cannedmessagechosed, "member_uid":request.favorite};                        
-                        requestSendMessage(_theUrl2, data, 5).then(response => {
-                            if (response) {
-                                if (response.status=="OK") {
-                                    console.log("sent canned message:",response)
-                                    sendResponse(true);
-                                } else 
-                                    sendResponse(null);
-                            } else  
-                                sendResponse(null);
-                        }) */
+                        
                         
                     } else 
                         sendResponse(null);
@@ -244,7 +282,16 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 
     if (request.sendmessage) {
         if (request.message) {
-            if (delaymode=="off") {
+            if (request.mode=="delay") {
+                authServerSide(res => {
+                    if (res) {
+                        saveSendMessage(request.sendmessage, request.message)
+                    } else {
+                        console.log('cannot auth to the server');
+                    }
+                })
+                sendResponse('delaymode on')
+            } else {
                 _theUrl = "https://api.seeking.com/v3/users/"+uid+"/conversations";
                 data = {"body":request.message, "member_uid":request.sendmessage};
                 
@@ -258,21 +305,13 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                     } else  
                         sendResponse(null);
                 })
-            } else if (delaymode=="on") {
-                authServerSide(res => {
-                    if (res) {
-                        saveSendMessage(request.sendmessage, request.message)
-                    } else {
-                        console.log('cannot auth to the server');
-                    }
-                })
-                sendResponse('delaymode on')
             }
-
+            
         } else {            
             sendResponse('no message')
             //
         }
+        return true;
     }
     
 
