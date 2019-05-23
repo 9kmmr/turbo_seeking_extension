@@ -23,13 +23,7 @@ chrome.storage.sync.get(['uid','email','access_token'], function(items){
             chrome.storage.sync.set({'cannedmessage':'{"message1":"Hey","message2":"Hey","message3":"Hey","message4":"Hey","message5":"Hey"}'});
         }
     })
-    chrome.storage.sync.get('delaymode', function(item){
-        if (!item.delaymode) {
-            chrome.storage.sync.set({'delaymode':"off"});
-        } else if (item.delaymode) {
-            delaymode = item.delaymode;
-        }
-    })
+    
     chrome.storage.sync.get('favoritemode', function(item){
         if (!item.favoritemode) {
             chrome.storage.sync.set({'favoritemode':"off"});
@@ -40,7 +34,9 @@ chrome.storage.sync.get(['uid','email','access_token'], function(items){
 
 })
 
-/**  ****************************** LISTENER SECTION ************************************** */
+/**********************************************************************************************************
+************************************** LISTENER SECTION ***************************************************
+***********************************************************************************************************/
 
 chrome.runtime.onConnect.addListener(function (externalPort) {
     externalPort.onDisconnect.addListener(function() {
@@ -88,7 +84,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     }
     if (request.getPageIndex) {
         chrome.storage.sync.get('pageindex', function(res) {
-            console.log(res.pageindex)
+            
             if (res.pageindex) {
                 PageIndex = res.pageindex;
                 sendResponse(res.pageindex);
@@ -127,6 +123,23 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         return true;
     }
     
+    if (request.getDelayedMessages) {
+        authServerSide(res => {
+            if (res) {
+                getServerCannedMessage(messagesonserver => {
+                    if (messagesonserver) {
+                        sendResponse(messagesonserver)
+                    } else 
+                        sendResponse([])
+                })
+                
+            } else {
+                console.log('cannot auth to the server');
+                sendResponse(false);
+            }
+        })
+        return true;
+    }
     if (request.savefavoritemode) {
         
         chrome.storage.sync.set({'favoritemode':request.savefavoritemode}, function(){
@@ -194,46 +207,61 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 
     if (request.startsearch) {
         
-        _theUrl = "https://api.seeking.com/v3/users/"+uid+"/search?"+request.startsearch.split("search?")[1]
-        
-        //if (old_url!=_theUrl) {
-            requestGetLive(_theUrl, 5).then(function(response) {
-                
-                if (response) {
-                    combineProfileData(response.response.profiles.data, function(returned_users) {
-                        combineUserPhotos(returned_users).then(users_data =>{
-                            console.log(users_data)
-
-                            lastresultsSearched.push(users_data);
-                            console.log(lastresultsSearched)
-                            console.log(response.response.profiles)
-                            PageIndex = response.response.profiles.current_page;
-                            NextPage = response.response.profiles.next_page_url;
-                            sendResponse({"currentpage":response.response.profiles.current_page,"next_page":response.response.profiles.next_page_url,"profiles":users_data});        
-                        })
-                        
+        _theUrl = "https://api.seeking.com/v3/users/"+uid+"/search?"+request.startsearch.split("search?")[1]        
+        requestGetLives(_theUrl).then(response => {
+            if (response) {
+                if (response.status==200) {
+                    console.time('combineuser')
+                    combineProfileData(response.data.response.profiles.data, function(returned_users) {
+                        console.timeEnd('combineuser');
+                        lastresultsSearched.push(returned_users);
+                        PageIndex = response.data.response.profiles.current_page;
+                        NextPage = response.data.response.profiles.next_page_url;
+                        sendResponse({"currentpage":response.data.response.profiles.current_page,"next_page":response.data.response.profiles.next_page_url,"profiles":returned_users});        
+                           
                     })
-                    
+                } else if (response.status==429) {
+                    sendResponse("banned");
                 } else 
                     sendResponse(null)
-            });
-            //old_url=_theUrl;
-        //}
+            }
+        })
+        
+        return true;
+    }
+    if (request.usersentmessage) {
+        recursiveFunc(1,[]).then(res => {
+            console.log(res)
+            sendResponse(res)       
+        });
+        
+        
+        return true;
+    }
+
+    if (request.getallphotos) {
+        getAllUserPhotos(request.getallphotos).then(user_photos => {  
+
+            sendResponse(user_photos);           
+        })
         return true;
     }
 
     if (request.favorite) {
         if (favoritemode=="off") {
+
             _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+request.favorite;
             
-            requestFavorite(_theUrl, 5).then(response => {
-                if (response) {
-    
-                    console.log("favorite message:",response)
-                    if (response.status=="OK") {
-                        sendResponse(true);
-                    } else 
-                        sendResponse(null);
+            requestFavorite(_theUrl).then(response => {
+                if (response) {   
+                                    
+                    if (response.status==200) {    
+                        updateUserData(request.favorite, 'favorite', 1)                       
+                        sendResponse(true);                        
+                    } else if (response.status==429) 
+                        sendResponse("banned");
+                    else 
+                        sendResponse(null)
                 } else 
                     sendResponse(null);
             })
@@ -241,15 +269,15 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         } else if (favoritemode=="on") {
             _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+request.favorite;
             
-            requestFavorite(_theUrl, 5).then(response => {
-                if (response) {    
-                    console.log("favorite message:",response)
-                    if (response.status=="OK") {
-                        sendResponse(true);
-                        
-                        
-                    } else 
-                        sendResponse(null);
+            requestFavorite(_theUrl).then(response => {
+                if (response) {                     
+                    if (response.status==200) {  
+                        updateUserData(request.favorite, 'favorite', 1)                      
+                        sendResponse(true);                        
+                    } else if (response.status==429) 
+                        sendResponse("banned");
+                    else 
+                        sendResponse(null)
                 } else 
                     sendResponse(null);
             })
@@ -259,14 +287,17 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     if (request.unfavorite) {
         _theUrl = "https://api.seeking.com/v3/users/"+uid+"/favorites/"+request.unfavorite;
         
-        requestUnFavorite(_theUrl, 5).then(response => {
-            if (response) {
-                console.log("unfavorite message:",response)
-                if (response.status=="OK") {
-                    sendResponse(true);
-                } else 
-                    sendResponse(null);
-            } else sendResponse(null);
+        requestUnFavorite(_theUrl).then(response => {
+            if (response) {                     
+                if (response.status==200) {  
+                    updateUserData(request.unfavorite, 'favorite', 0)                        
+                    sendResponse(true);                        
+                } else if (response.status==429) 
+                    sendResponse("banned");
+                else 
+                    sendResponse(null)
+            } else 
+                sendResponse(null);
         })
         // remove favorite in the server
         authServerSide(res => {
@@ -285,7 +316,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
             if (request.mode=="delay") {
                 authServerSide(res => {
                     if (res) {
-                        saveSendMessage(request.sendmessage, request.message)
+                        saveSendMessage(request.sendmessage, request.age, request.address, request.message)
                     } else {
                         console.log('cannot auth to the server');
                     }
@@ -294,17 +325,16 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
             } else {
                 _theUrl = "https://api.seeking.com/v3/users/"+uid+"/conversations";
                 data = {"body":request.message, "member_uid":request.sendmessage};
-                
-                requestSendMessage(_theUrl, data, 5).then(response => {
-                    console.log(response)
+                requestSendMessages(_theUrl, data).then(response => {
+                    console.log(response);
                     if (response) {
-                        if (response.status=="OK") {
-                            sendResponse(true);
-                        } else 
-                            sendResponse(null);
-                    } else  
-                        sendResponse(null);
+                        if (response.status==200) {
+                            updateUserData(request.sendmessage, 'sent', 1)   
+                        }
+                    }
+                    sendResponse(response)
                 })
+                
             }
             
         } else {            
@@ -312,277 +342,350 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
             //
         }
         return true;
+    }    
+
+    if (request.deletecannedmessages) {
+        authServerSide(res => {
+            if (res) {
+                deleteCannedMessage(request.deletecannedmessages, response => {
+                    if (response)
+                        sendResponse("done");
+                    else sendResponse(null);
+                })
+            } else {
+                console.log('cannot auth to the server');
+                sendResponse(null);
+            }
+        })
     }
-    
 
     return true;
 
 });
+
+/**********************************************************************************************************
+ ************************************** FUNCTIONS SECTION ***************************************** 
+ *********************************************************************************************************/
+
+
+
 /**
- * 
- * @param {*} url 
- * @param {*} n 
+ * do search with url
+ * @param {string} url the url to search
  */
-const requestGetLive = (url,  n) => {
-    options={
-        method:"GET",
+async function requestGetLives(url){
+    config = {
+        url: url,
         headers: {
-            "Authorization": "Bearer "+access_token
-        }
-    }
-    fetchedData = fetch(url, options).then(
-       function(response) {
-            status = response.status;
-            if (status==200)
-                return response.json();
-            if (status==403) {
-                if (n === 1) {
-                    return null
-                };
-                requestGetAccessToken(function(){})
-                return requestGetLive(url,  n - 1);
-            } else {
-                if (n === 1) {
-                    return null
-                };
-                requestGetAccessToken(function(){})
-                return requestGetLive(url,  n - 1);
-            }
-            
-        }
-    ).catch(function(error) {
-        if (n === 1) {           
-            return null;
-        };
-        return requestGetLive(url, n - 1);
+            "Authorization": "Bearer "+access_token           
+        },
+        method: "GET"
+    }  
+    axios.interceptors.response.use(null, async (error) => {
+        
+        if (error.config && error.response && error.response.status === 403) {
+            newaccess_token = await requestNewAuth();           
+            error.config.headers.Authorization = "Bearer " + newaccess_token;
+            return axios.request(error.config);                       
+        }  
+        return Promise.reject(error);
     });
-    return fetchedData;
+    return axios(config);
+       
 }
+
 /**
- * 
- * @param {*} data 
- * @param {*} callback 
+ * combine the searched users data to good format and send to popup
+ * @param {array} data array of all searched users data
+ * @param {function} callback callback function
  */
 function combineProfileData(data, callback) {    
     users = [];
     
     if (data) {
-        data.forEach((element, index) => {          
+        
+        for (let index = 0; index < data.length; index++) {
+            const element = data[index];
             users.push ({
-                            'name' : element.profile_attributes.username[0].value || 'Seeking Username',
-                            'age' :element.age || '',
-                            'location' :element.primary_location.name || '',
-                            'height' :element.height || '', 
-                            'body' :element.profile_attributes.body_type[0].value || '',
-                            'ethnicity' :element.profile_attributes.ethnicity[0].value || '',
-                            'favorited': element.favorited_by[0]||0,
-                            'user_uid': element.uid
-                            //'photos' :photos 
-            }); 
-            /*  */
-        });
+                'name' : element.profile_attributes.username[0].value || 'Seeking Username',
+                'age' :element.age || '',
+                'location' :element.primary_location.name || '',
+                'height' :element.height || '', 
+                'body' :element.profile_attributes.body_type[0].value || '',
+                'ethnicity' :element.profile_attributes.ethnicity[0].value || '',
+                'favorited': element.favorited_by[0]||0,
+                'user_uid': element.uid,
+                'pic':element.profile_pic.thumb || '',
+                'sent': 0
+            });            
+        }
     }
     callback(users);
 }
-/**
- * 
- * @param {*} datauser 
- */
-async function combineUserPhotos(datauser) {
-    newusers = [];
-    if (datauser) {
-        for (const element of datauser) {            
-            element.photos = await requestGetProfile("https://api.seeking.com/v3/users/"+uid+"/views/"+element.user_uid+"?with=photos,isUserReportedAlready,isMemberHasPrivatePhotoPermission,memberNote&lang=en_US", 5).then(user_profile => {       
-                if (user_profile.status=="OK") {
-                    return user_profile.response.profile;                                                 
-                }                 
-            }).then(us=>{
-                photos = [us.profile_pic.thumb];
-                us.photos.public.approved.forEach(element => {
-                    photos.push(element.url.thumb);
-                });
-                return photos;
-            }) ;
-              
-            newusers.push(element)                   
+function updateUserData(uid, type, data) {
+    usfind = lastresultsSearched[0].findIndex(arr =>  arr['user_uid']==uid )
+    console.log([uid, type, data])
+    console.log(lastresultsSearched)
+    console.log(usfind)
+    if (usfind!==-1) {
+        switch (type) {
+            case 'favorite':
+                updatedObj = { ...lastresultsSearched[0][usfind], favorited: data};
+                // make final new array of objects by combining updated object.
+                updatedUsers = [
+                ...lastresultsSearched[0].slice(0, usfind),
+                updatedObj,
+                ...lastresultsSearched[0].slice(usfind + 1),
+                ];
+                lastresultsSearched[0] = updatedUsers;
+                console.log(updatedObj)
+                chrome.storage.local.set({'historySearched': JSON.stringify(lastresultsSearched)}, function(){});
+                break;
+            
+            case 'sent':
+                updatedObj = { ...lastresultsSearched[0][usfind], sent: data};
+                // make final new array of objects by combining updated object.
+                updatedUsers = [
+                ...lastresultsSearched[0].slice(0, usfind),
+                updatedObj,
+                ...lastresultsSearched[0].slice(usfind + 1),
+                ];
+                lastresultsSearched[0] = updatedUsers;
+                console.log(updatedObj)
+                chrome.storage.local.set({'historySearched': JSON.stringify(lastresultsSearched)}, function(){});
+                break;
+            default:
+                break;
         }
-    }
-    return await Promise.all(newusers);
+    } 
     
 }
 /**
- * 
- * @param {*} url 
- * @param {*} n 
+ * get photos base on user id
+ * @param {string} user_id user_id want to get photos
  */
-async function requestGetProfile(url, n) {
-    options={
-        method:"GET",
+async function getAllUserPhotos(user_id) {
+    if (user_id) {
+        return await requestGetProfile("https://api.seeking.com/v3/users/"+uid+"/views/"+user_id+"?with=photos,isUserReportedAlready,isMemberHasPrivatePhotoPermission,memberNote&lang=en_US")
+        .then(user_profile => { 
+            if (user_profile.status==200){
+                if (user_profile.data.status=="OK") {
+                    return user_profile.data.response.profile;                                                 
+                }                 
+            }  else return null
+        }).then(us=>{
+            photos = [];
+            if (us) {
+                if (user_id , us.photos.public.approved.length)
+                    us.photos.public.approved.forEach(element => {
+                        photos.push(element.url.thumb);
+                    });
+            }
+            return photos;
+        });
+    }else 
+        return null;
+}
+/**
+ * get user profile details
+ * @param {string} url url endpoint to get user profile
+ * @param {int} n number of retry time
+ */
+async function requestGetProfile(url){
+    config = {
+        url: url,
         headers: {
-            "Authorization": "Bearer "+access_token
+            "Authorization": "Bearer "+access_token           
+        },
+        method: "GET"
+    }  
+    axios.interceptors.response.use(null, async (error) => {
+        
+        if (error.config && error.response && error.response.status === 403) {
+            newaccess_token = await requestNewAuth();           
+            error.config.headers.Authorization = "Bearer " + newaccess_token;
+            return axios.request(error.config);                       
+        }  
+        return Promise.reject(error);
+    });
+    return axios(config);
+       
+}
+
+/**
+ * combine pages of users sent message
+ * @param {function} callback callback function
+ */
+
+async function recursiveFunc(page, arr) {
+    let datausersentmessage = arr;
+    const res = await requestGetMessageSent('https://api.seeking.com/v3/users/' + uid + '/conversations?mailbox=sent&page=' + page);
+    if (res) {
+        if (res.status==200) {
+            console.log(res.data)
+            if (res.data.status == "OK") {
+                if (res.data.response.conversations.data.length) {
+                    for (let index = 0; index < res.data.response.conversations.data.length; index++) {
+                        const element = res.data.response.conversations.data[index];
+                        datausersentmessage.push(element.participants[0].uid);
+                    }
+                    
+                    if (res.data.response.conversations.next_page_url)
+                        return recursiveFunc(++page, datausersentmessage);
+                    
+                    else
+                        return datausersentmessage;
+                }
+            }
         }
     }
-    fetchedData =  await fetch(url, options).then(
-       function(response) {
-            status = response.status;
-            if (status==200) {
-                return response.json();
-            }
-            if (status==403) {
-                if (n === 1) {
-                    return null
-                };
-                requestGetAccessToken(function(){})
-                return requestGetProfile(url,  n - 1);
-            } else {
-                if (n === 1) {
-                    return null
-                };
-                requestGetAccessToken(function(){})
-                return requestGetProfile(url,  n - 1);
-            }
-            
-        }
-    ).catch(function(error) {
-        if (n === 1) {           
-            return null;
-        };
-        return requestGetProfile(url, n - 1);
+   
+  }
+
+/**
+ * get message user send
+ * @param {string} url url end point to get send message
+ * @param {int} n number of retry time
+ */
+async function requestGetMessageSent(url){
+    config = {
+        url: url,
+        headers: {
+            "Authorization": "Bearer "+access_token           
+        },
+        method: "GET"
+    }  
+    axios.interceptors.response.use(null, async (error) => {
+        
+        if (error.config && error.response && error.response.status === 403) {
+            newaccess_token = await requestNewAuth();           
+            error.config.headers.Authorization = "Bearer " + newaccess_token;
+            return axios.request(error.config);                       
+        }  
+        return Promise.reject(error);
     });
-    return fetchedData;
+    return axios(config);       
 }
 
 
 /**
- * 
- * @param {*} url 
- * @param {*} n 
+ * favorite user
+ * @param {string} url url endpoint to favorite
+ * @param {int} n number of retry time
  */
-const requestFavorite = (url,  n) => {
-    options={
-        method:"POST",
+async function requestFavorite (_url) {
+    config = {
+        url: _url,
         headers: {
             "Authorization": "Bearer "+access_token,
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*"
         },
-        body: JSON.stringify({})
-    }
-    fetchedData = fetch(url, options).then(
-       function(response) {
-            status = response.status;
-            if (status==200)
-                return response.json();
-            if (status==403) {
-                if (n === 1) {
-                    return null
-                };
-                requestGetAccessToken(function(){})
-                return requestFavorite(url,  n - 1);
-            } else {
-                if (n === 1) {
-                    return null
-                };
-                requestGetAccessToken(function(){})
-                return requestFavorite(url,  n - 1);
-            }
-            
-        }
-    ).catch(function(error) {
-        if (n === 1) {   
-            console.log('error can not favorite');        
-            return null;
-        };
-        return requestFavorite(url, n - 1);
+        data: { },
+        method: "POST"
+    }  
+    axios.interceptors.response.use(null, async (error) => {
+        console.log(error.response)
+        if (error.config && error.response && error.response.status === 403) {
+            const newaccess_token = await requestNewAuth(uid, email, access_token);
+            updateUser(uid, email, "access_token", newaccess_token);
+            error.config.headers.Authorization = "Bearer " + newaccess_token;
+            return axios.request(error.config);
+        }      
+        return Promise.reject(error);
     });
-    return fetchedData;
+    return axios(config);
 }
+
+/**
+ * unfavorite user
+ * @param {string} url url end point to unfavorite 
+ * @param {int} n time try
+ */
+async function requestUnFavorite (_url) {
+    config = {
+        url: _url,
+        headers: {
+            "Authorization": "Bearer "+access_token           
+        },
+        data: { },
+        method: "DELETE"
+    }  
+    axios.interceptors.response.use(null, async (error) => {
+        console.log(error.response)
+        if (error.config && error.response && error.response.status === 403) {
+            const newaccess_token = await requestNewAuth(uid, email, access_token);
+            updateUser(uid, email, "access_token", newaccess_token);
+            error.config.headers.Authorization = "Bearer " + newaccess_token;
+            return axios.request(error.config);
+        }      
+        return Promise.reject(error);
+    });
+    return axios(config);
+}
+
 /**
  * 
- * @param {*} url 
- * @param {*} n 
+ * @param {string} url endpoint url to send messsage
+ * @param {object} data message object to send
+ * @param {int} n time retry send message
  */
-const requestUnFavorite = (url,  n) => {
-    options={
-        method:"DELETE",
-        headers: {
-            "Authorization": "Bearer "+access_token            
-        }
-    }
-    fetchedData = fetch(url, options).then(
-       function(response) {
-            status = response.status;
-            if (status==200)
-                return response.json();
-            if (status==403) {
-                if (n === 1) {
-                    return null
-                };
-                requestGetAccessToken(function(){})
-                return requestUnFavorite(url,  n - 1);
-            } else {
-                if (n === 1) {
-                    return null
-                };
-                requestGetAccessToken(function(){})
-                return requestUnFavorite(url,  n - 1);
-            }
-            
-        }
-    ).catch(function(error) {
-        if (n === 1) {   
-            console.log('error can not favorite');        
-            return null;
-        };
-        return requestUnFavorite(url, n - 1);
-    });
-    return fetchedData;
-}
-
-
-const requestSendMessage = (url, data,  n) => {
-    options={
-        method:"POST",
+async function requestSendMessages(url, _data){
+    config = {
+        url: url,
         headers: {
             "Authorization": "Bearer "+access_token,
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*"
         },
-        body: JSON.stringify(data)
-    }
-    fetchedData = fetch(url, options).then(
-       function(response) {
-            status = response.status;
-            if (status==200)
-                return response.json();
-            if (status==403) {
-                if (n === 1) {
-                    return null
-                };
-                requestGetAccessToken(function(){})
-                return requestSendMessage(url, data,  n - 1);
-            } else {
-                if (n === 1) {
-                    return null
-                };
-                requestGetAccessToken(function(){})
-                return requestSendMessage(url, data,  n - 1);
-            }
-            
+        data: _data,
+        method: "POST"
+    }  
+    axios.interceptors.response.use(null, async (error) => {
+        
+        if (error.config && error.response && error.response.status === 403) {
+            newaccess_token = await requestNewAuth();
+           
+            error.config.headers.Authorization = "Bearer " + newaccess_token;
+            return axios.request(error.config);                       
+        }  else if (error.config && error.response && error.response.status === 400)    {
+            return Promise.reject(error.response.data);
         }
-    ).catch(function(error) {
-        if (n === 1) {   
-            console.log('error can not send message');        
-            return null;
-        };
-        return requestSendMessage(url, data, n - 1);
+        return Promise.reject(error);
     });
-    return fetchedData;
+    return axios(config);
+       
 }
 
 
+/**
+ * request new access token if token expired
+ * @param {*} callback 
+ */
+async function requestNewAuth(){
+    return await axios({
+        url:  "https://api.seeking.com/v3/users/"+uid+"/auth/token",
+        headers: {
+            "Authorization": "Bearer "+access_token,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+        },
+        data: {
+        },
+        method: "PUT"
+    }).then(res => {        
+        chrome.storage.sync.set({'access_token': res.data.response});
+        return res.data.response
+    })
+    .catch(error => {        
+        // error try again one time
+        console.log(error)
+        return requestNewAuth() 
+    })
+}
 function requestGetAccessToken(callback){
     _theUrl = "https://api.seeking.com/v3/users/"+uid+"/auth/token"
     try {        
@@ -594,12 +697,15 @@ function requestGetAccessToken(callback){
                     if (data.status=="OK") {
                         access_token = data.response;
                         chrome.storage.sync.set({'access_token': access_token});
-                        callback();
+                        callback(access_token);
                     }
                 }
             }
             else if (xmlHttp.readyState == 4 && xmlHttp.status == 430) {
                 console.log('403')
+                callback('false')
+            } else if (xmlHttp.readyState == 4 && xmlHttp.status == 429) {
+                console.log('429')
                 callback('false')
             }
             else 
@@ -621,7 +727,7 @@ function requestGetAccessToken(callback){
 
 /*********************************** CONTACT TO THE SERVER SIDE ******************************* */
 /**
- * 
+ * authentication to the server
  * @param {*} callback 
  */
 function authServerSide( callback) {
@@ -636,8 +742,23 @@ function authServerSide( callback) {
         }
     })
 }
+
+function getServerCannedMessage(callback) {
+    const _theUrl = siteurl + "getcannedmessage";  
+    const _data = JSON.stringify({"uid":uid, "email":email})
+    httpPostAsync(_theUrl, _data, res => {
+        if (res) {
+            results = JSON.parse(res);
+            if (!results.status) {
+                callback(results)
+            } else callback(false)
+        } else {
+            callback(false)
+        }
+    })
+}
 /**
- * 
+ * save canned messages to the server
  * @param {*} messages 
  */
 function saveServerCannedMessage(messages) {
@@ -647,19 +768,9 @@ function saveServerCannedMessage(messages) {
         console.log(res)
     })
 }
+
 /**
- * 
- * @param {*} mode 
- */
-function saveServerSettingdelay(mode) {
-    const _theUrl = siteurl + "settingdelay";  
-    const _data = JSON.stringify({"uid":uid, "email":email,"delay":mode})
-    httpPostAsync(_theUrl, _data, res => {
-        console.log(res)
-    })
-}
-/**
- * 
+ * save setting favorite mode
  * @param {*} mode 
  */
 function saveServerSettingfavorite(mode) {
@@ -669,7 +780,7 @@ function saveServerSettingfavorite(mode) {
         console.log(res)
     })
 }
-/* this function cause conflict with watch favorite on server side, douplicate possible
+/* this function cause conflict with watch favorite on server side, duplicate possible
 
 function saveFavorites(f_uid) {
     const _theUrl = siteurl + "auth";  
@@ -679,8 +790,8 @@ function saveFavorites(f_uid) {
     })
 } */
 /**
- * 
- * @param {*} f_uid 
+ * unfavorite user
+ * @param {string} f_uid user_id unfavorited
  */
 function saveUnFavorites(f_uid) {
     const _theUrl = siteurl + "unfavoriteuser";  
@@ -694,13 +805,22 @@ function saveUnFavorites(f_uid) {
  * @param {*} s_uid 
  * @param {*} message 
  */
-function saveSendMessage(s_uid, message) {
+function saveSendMessage(s_uid, age, address, message) {
     const _theUrl = siteurl + "delaycannedmessage";  
-    _data = JSON.stringify({"uid":uid, "email":email,"s_uid":s_uid,"message":message})
+    _data = JSON.stringify({"uid":uid, "email":email,"s_uid":s_uid,"age":age,"address":address, "message":message})
     httpPostAsync(_theUrl, _data, res => {
         console.log(res)
     })
 }
+
+function deleteCannedMessage(suid, callback){
+    const _theUrl = siteurl + "deletecannedmessage";  
+    _data = JSON.stringify({"uid":uid, "email":email,"s_uid":suid})
+    httpPostAsync(_theUrl, _data, res => {
+        console.log(res)
+    })
+}
+
 
 
 function httpGetAsync(_theUrl, callback)

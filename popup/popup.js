@@ -3,6 +3,8 @@ var currentpage, page_index, next_page,m;
 
 var cannedmessage1,cannedmessage2,cannedmessage3,cannedmessage4,cannedmessage5;
 
+var listusersentmessage=[];
+
 var port = chrome.runtime.connect();
 
 chrome.extension.sendMessage({ getidentity: 1 }, function (res) {
@@ -39,6 +41,8 @@ chrome.extension.sendMessage({ getidentity: 1 }, function (res) {
 
         })
 
+        
+
         chrome.extension.sendMessage({ getlastsearch: 1 }, function (response) {            
             if (response) {
                 $('#search-url').val(response);
@@ -48,17 +52,22 @@ chrome.extension.sendMessage({ getidentity: 1 }, function (res) {
 
             }
         })
-        chrome.extension.sendMessage({ getHistory: 1 }, function (response) {            
-            if (response) {                
-                if (response.length)
-                {   
-                    response.forEach(element => {                        
-                        showProfiles(element, function(){          
-                        })
-                    });
+        chrome.extension.sendMessage({ usersentmessage: 1 }, function (response) {  
+            console.log(response)
+            listusersentmessage = response;
+            chrome.extension.sendMessage({ getHistory: 1 }, function (response) {            
+                if (response) {                
+                    if (response.length)
+                    {   
+                        response.forEach(element => {                        
+                            showProfiles(element, function(){          
+                            })
+                        });
+                    }
                 }
-            }
+            })
         })
+        
         chrome.extension.sendMessage({ getPageIndex: 1 }, function (response) {            
             if (response) {
                 page_index = response;
@@ -71,6 +80,31 @@ chrome.extension.sendMessage({ getidentity: 1 }, function (res) {
                 console.log(next_page)
             }
         })
+        
+        chrome.extension.sendMessage({ getDelayedMessages: 1 }, function (response) {            
+            if (response) {
+                if (response.length) {
+                    response.forEach(element => {
+                        if (element) {
+                            html='<div class="row" id="delay-user-"'+(element.s_uid)+'>'  
+                                    +'<div class="col-xs-7">'                                    
+                                        +'<div><b>Address:</b> '+(element.address)+'</div>'
+                                        +'<div><b>age:</b>'+(element.age)+'</div>'
+                                        +'<div><b> message:</b> '+(element.message)+'</div>'
+                                    +'</div>'
+                                    +'<div class="col-xs-3"></div>'
+                                    +'<div class="col-xs-2">'
+                                        +'<a class="btn btn-sm btn-danger btn-delete-delay" data-suid="'+(element.s_uid)+'" href="#" role="button">Delete</a>'
+                                    +'</div>'                                        
+                                +'</div>';
+                            $('#results-delayed-messages').append(html);
+                        }
+                    });
+                }
+                console.log(response)
+            }
+        })
+        
         
 
         document.getElementById("authenticated").style.display = "block";
@@ -89,10 +123,8 @@ searchbtn.onclick = function(e){
     $('#result-search-section').empty();
     searchurl = document.getElementById('search-url').value ;
     if (searchurl) {
-        chrome.extension.sendMessage({ savelastsearch: searchurl }, function (res) {
-        })
-        chrome.extension.sendMessage({ firstsearch: true }, function (res) {
-        })
+        chrome.extension.sendMessage({ savelastsearch: searchurl }, function (res) {})
+        chrome.extension.sendMessage({ firstsearch: true }, function (res) {})
         compileSettingSearchFromUrl(searchurl);
         dosearch(searchurl);
     }
@@ -100,14 +132,22 @@ searchbtn.onclick = function(e){
 
 function dosearch(url) {
     $('#result-search-section').append("<img id='ajax-loader' src='./popup/flick-loader.gif' width='40px' height='40px' >")
+    $('#err-banned').remove();
     chrome.extension.sendMessage({ startsearch: url }, function (response) {
         
         if (response) {
-            currentpage = response.currentpage;
-            next_page = response.next_page;
-            showProfiles(response.profiles, function(){
-                $('#ajax-loader').remove();                
-            })
+            if (typeof(response)!=="string") {
+                currentpage = response.currentpage;
+                next_page = response.next_page;
+                console.time('response')
+                showProfiles(response.profiles, function(){
+                    console.timeEnd('response')
+                    $('#ajax-loader').remove();                
+                })
+            } else if (response=="banned") {
+                $('#ajax-loader').remove();   
+                $('#result-search-section').append('<h5 id="err-baned">Sorry! You have been banned temporarily , Please try again after 2 minutes.</h5>')
+            }
         } 
         return true;           
     })
@@ -115,17 +155,26 @@ function dosearch(url) {
 }
 
 function showProfiles(data, callback) {
-    
-    data.forEach(element => {
-        combinePhoto(element.photos,  photo=> {
+    for (let index = 0; index < data.length; index++) {
+        const element = data[index];
+        insertProfile(element, done => {
             
-            tmp = '<div class="profiles" data-uid="'+element.user_uid+'">'   
+           callPhoto(element.user_uid)
+        })
+    }
+    
+    callback();
+}
+
+function insertProfile(element, callback)  {
+    
+    tmp = '<div class="profiles" data-uid="'+element.user_uid+'">'   
                 +'<div id="carousel-'+element.user_uid+'" class="carousel slide" data-ride="carousel" data-pause="false">'
-                    +'<div class="carousel-inner">'
-                        +(photo)
+                    +'<div class="carousel-inner" id="carousel-inner-'+element.user_uid+'">'
+                        +'<div class="item active">'
+                            +'<img src="'+element.pic+'">'
+                        +'</div>'                        
                     +'</div>'
-                    
-                    +(element.photos.length>1?'<a class="right carousel-control" href="#carousel-'+element.user_uid+'" data-slide="next"><span class="glyphicon glyphicon-chevron-right"></span></a>':'')
                 +'</div>'      
                 
                 +'<div class="button-functions" data-uid="'+element.user_uid+'">'                    
@@ -162,7 +211,8 @@ function showProfiles(data, callback) {
                             +'<a href="#"data-mode="message" >Message Mode</a>'
                         +'</div>'
                         +'</button>'
-
+                        +((element.sent||(listusersentmessage.indexOf(element.user_uid)!==-1))?'<span id="sent_'+(element.user_uid)+'" class="glyphicon glyphicon-send" style="color:#07e818;margin-top:-20px;" data-toggle="tooltip" title="Message sent"></span>':'')
+                       // +((listusersentmessage.indexOf(element.user_uid)!==-1)?'<span class="glyphicon glyphicon-send" style="color:#07e818;margin-top:-20px;" data-toggle="tooltip" title="Message sent"></span>':'')
                 +'</div>'
                 +'<div class="user-details">'
                     +'<span class="user-address">'+element.location+'</span>'
@@ -176,16 +226,30 @@ function showProfiles(data, callback) {
             +'</div>';
 
             $('#result-search-section').append(tmp);
-        })
-        
-    });
     callback();
 }
+
+function callPhoto(user_uid){
+    chrome.extension.sendMessage({ getallphotos: user_uid }, function (res) {
+        if (res) {
+            if (typeof(res)!=="string") {
+                combinePhoto(res,  photohtml => {
+                    $('#carousel-inner-'+user_uid+'').append(photohtml);
+                    if (res.length) 
+                        $('<a class="right carousel-control" href="#carousel-'+user_uid+'" data-slide="next"><span class="glyphicon glyphicon-chevron-right"></span></a>').insertAfter('#carousel-inner-'+user_uid+'');
+                })
+            } else if (res=="banned") {
+                console.log("banned");
+            }
+        }
+    })
+}
+
 function combinePhoto(photos, callback) {
     html = "";
     if (photos)
     photos.forEach((element,index) => {
-        html += '<div class="item '+(index==0?"active":"")+'">'
+        html += '<div class="item ">'
                 +'<img src="'+element+'">'
                 +'</div>';
     });
@@ -232,9 +296,15 @@ $(document).on('click','.toggle-heart',function(){
 })
 
 function favorite(uid, callback) {
-    chrome.extension.sendMessage({ favorite: uid }, function (response) {        
+    chrome.extension.sendMessage({ favorite: uid }, function (response) {  
+        
         if (response) {
-            callback(true);
+            
+            if (typeof(response)=="string"&&response=="banned") {
+                alert("You have been banned temporarily from server, Please try again after 2 minutes");
+                callback(false)
+            } else
+                callback(true);
         } else {
             callback(false);
         }
@@ -243,7 +313,11 @@ function favorite(uid, callback) {
 function unfavorite(uid, callback) {
     chrome.extension.sendMessage({ unfavorite: uid }, function (response) {        
         if (response) {
-            callback(true);
+            if (typeof(response)=="string"&&response=="banned") {
+                alert("You have been banned temporarily from server, Please try again after 2 minutes");
+                callback(false)
+            } else
+                callback(true);
         } else {
             callback(false);
         }
@@ -258,22 +332,40 @@ $(document).on('click','.canned-btn-send-mes a',function(e){
     const uid = $(button).parent().data('uid');
     mess = $(button).prop('title');
     mode = $(this).data("mode");
+    address = $($($(button).parent().parent().find(".user-details")[0]).find(".user-address")[0]).text();
+    age= $($($(button).parent().parent().find(".user-details")[0]).find(".user-age")[0]).text();
     
-    sendMessage(uid, mess, mode,  res => {
+    sendMessage(uid, mess, age, address, mode,  res => {
+
         if (!res) {
             $(button).css("background-color","#666");
             console.log('failed to send message');
             $(button).attr("disabled",false)
         } else {
             $(button).css("background-color","#ff0000d9");
-            $(button).attr("disabled",true)            
+            $(button).attr("disabled",true) 
+            console.log($('#sent_'+uid).length)
+            if (!$('#sent_'+uid).length)  {
+                
+                $(button).parent().append('<span class="glyphicon glyphicon-send" style="color:#07e818;margin-top:-20px;" data-toggle="tooltip" title="Message sent"></span>')
+            }
         }
     })
 })
-function sendMessage(uid, messages, _mode, callback) {
-    chrome.extension.sendMessage({ sendmessage: uid, message: messages , mode: _mode}, function (response) {        
+function sendMessage(uid, messages, _age, _address , _mode, callback) {
+    chrome.extension.sendMessage({ sendmessage: uid, message: messages ,age:_age, address:_address, mode: _mode}, function (response) {        
         if (response) {
-            callback(true);
+            if (response.status==200) {
+                callback(true)
+            } else if (response.status==400) {
+                alert("You have reach the limit of send message please upgrade account.");
+                callback(false)
+            } else if (response.status==429) {
+                alert("You have been banned temporarily from server, Please try again after 2 minutes");
+                callback(false)
+            } else 
+                callback(false)
+            
         } else {
             callback(false);
         }
@@ -337,7 +429,28 @@ function saveCannedMessage(data, callback) {
     })
 }
 
+$(document).on('click','.btn-delete-delay', function(){
+    suid = $(this).data('suid');
+    deleteCannedMessage(suid, res => {
+        if (res) {
+            $('#delay-user-"'+(suid)+'').remove();
+        } else {
+            alert("Delete delay message failed");
+        }
+    })
 
+})
+
+function deleteCannedMessage(suid, callback){
+    chrome.extension.sendMessage({ deletecannedmessages: suid}, function (response) {        
+        if (response) {
+            
+            callback(true);
+        } else {
+            callback(false);
+        }
+    })
+}
 
 /**
  * optional setting
